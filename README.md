@@ -69,4 +69,5 @@ docker run -ti \
 - [ ] lol write tests
 - [ ] Update `last_accessed` when feed is accessed
 - [ ] Allow deleting feeds
-- [ ] Put some kind of auth in front of feed creation/deletion
+- [x] Put some kind of auth in front of feed creation/deletion
+- [ ] Make sure podcast images come through
