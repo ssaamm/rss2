@@ -21,8 +21,9 @@ class CreateCombinedFeedRequest(BaseModel):
 
 class CreateFilteredFeedRequest(BaseModel):
     type = "filter"
-    require_in_title: List[str]
-    disallow_in_title: List[str]
+    source: str
+    require_in_title: List[str] = []
+    disallow_in_title: List[str] = []
 
 
 CreateFeedRequest = Union[CreateCombinedFeedRequest, CreateFilteredFeedRequest]

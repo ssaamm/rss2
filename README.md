@@ -16,6 +16,12 @@ cd src/rsstool
 python initdb.py
 ```
 
+## Running locally
+
+```sh
+uvicorn main:app --reload
+```
+
 ## Sample requests
 
 ### Combined feed
@@ -32,6 +38,21 @@ python initdb.py
 }
 ```
 
+### Filtered feed
+
+```json
+{
+    "type": "filter",
+    "source": "https://feeds.feedburner.com/HighScalability?format=xml",
+    "disallow_in_title": ["Post: "]
+}
+```
+
 # TODO list
 
 - [ ] Add ability for users to name/describe feed
+- [ ] Pre-commit hooks -- formatting, isort
+- [ ] lol write tests
+- [ ] Update `last_accessed` when feed is accessed
+- [ ] Allow deleting feeds
+- [ ] Put some kind of auth in front of feed creation/deletion

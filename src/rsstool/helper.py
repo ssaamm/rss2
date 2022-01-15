@@ -64,18 +64,21 @@ def datetime_from_struct_time(st: time.struct_time) -> dt.datetime:
     )
 
 
+def get_description(e):
+    description = e["summary"]
+    if "content" in e:
+        if len(e["content"]) > 1:
+            LOG.warning("more content than expected")
+        description = "<br>".join(c["value"] for c in e["content"] if c["type"] == "text/html")
+    return description
+
+
 def build_entries(entries):
     for e in entries:
-        description = e["summary"]
-        if "content" in e:
-            if len(e["content"]) > 1:
-                LOG.warning("more content than expected")
-            description = "<br>".join(c["value"] for c in e["content"] if c["type"] == "text/html")
-
         yield rss.RSSItem(
             title=e["title"],
             link=e["link"],
-            description=description,
+            description=get_description(e),
             author=e["author"],
             categories=[tag["term"] for tag in e.get("tags", [])],
             pubDate=datetime_from_struct_time(e["published_parsed"]),
@@ -109,6 +112,41 @@ async def save_to_cache(feed_id, rendered_feed: str):
         # TODO delete old values out of cache
 
 
+async def render_filtered_feed(config: Dict) -> str:
+    async with ahttp.ClientSession(headers=HEADERS) as session:
+        body = await get_feed(session, config["source"])
+    feed = feedparser.parse(body)
+    filtered_items = []
+    for entry in feed["entries"]:
+        if config["require_in_title"] and any(
+            kw.lower() not in entry["title"].lower() for kw in config["require_in_title"]
+        ):
+            continue
+        if config["disallow_in_title"] and any(
+            kw.lower() in entry["title"].lower() for kw in config["disallow_in_title"]
+        ):
+            continue
+
+        filtered_items.append(
+            rss.RSSItem(
+                title=entry["title"],
+                link=entry["link"],
+                description=get_description(entry),
+                author=entry["author"],
+                categories=[tag["term"] for tag in entry.get("tags", [])],
+                pubDate=datetime_from_struct_time(entry["published_parsed"]),
+                source=None,
+            )
+        )
+    return rss.RSS2(
+        title=feed["feed"]["title"],
+        link=feed["feed"]["link"],
+        description=feed["feed"]["subtitle"],
+        lastBuildDate=dt.datetime.utcnow(),
+        items=filtered_items,
+    ).to_xml()
+
+
 async def render_feed(feed_id) -> str:
     cached_value = await maybe_get_cache(feed_id)
     if cached_value is not None:
@@ -116,6 +154,7 @@ async def render_feed(feed_id) -> str:
 
     handlers = {
         "combine": render_combined_feed,
+        "filter": render_filtered_feed,
     }
     async with asql.connect(DB_LOC) as db:
         params = {"id": feed_id}
@@ -132,7 +171,29 @@ async def render_feed(feed_id) -> str:
 
 
 async def make_filtered_feed(request: CreateCombinedFeedRequest):
-    raise NotImplementedError()
+    feed_id = str(uuid.uuid4())
+    async with asql.connect(DB_LOC) as db:
+        params = {
+            "id": feed_id,
+            "type": request.type,
+            "config": json.dumps(
+                {
+                    "source": request.source,
+                    "disallow_in_title": request.disallow_in_title,
+                    "require_in_title": request.require_in_title,
+                }
+            ),
+            "last_accessed": None,
+            "deleted": 0,
+        }
+        await db.execute(
+            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
+            :id, :type, :config, :last_accessed, :deleted
+        )""",
+            params,
+        )
+        await db.commit()
+    return FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
 def validate_feed_request(r):
@@ -153,7 +214,7 @@ async def handle_create_feed_request(request: CreateFeedRequest):
     }
     this_handler = None
     for type, handler in handlers.items():
-        if isinstance(request, CreateCombinedFeedRequest):
+        if isinstance(request, type):
             this_handler = handler
             break
 
