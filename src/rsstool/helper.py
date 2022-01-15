@@ -138,7 +138,7 @@ async def render_filtered_feed(config: Dict) -> str:
         filtered_items.append(
             rss.RSSItem(
                 title=entry["title"],
-                link=entry["link"],
+                link=entry.get("link", config["source"]),
                 description=get_description(entry),
                 author=entry["author"],
                 categories=[tag["term"] for tag in entry.get("tags", [])],
