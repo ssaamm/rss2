@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, status, Response
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from rsstool.models import FeedResponse, CreateFeedRequest, FeedNotFound
@@ -19,6 +19,7 @@ async def create_feed(request: CreateFeedRequest, credentials: HTTPBasicCredenti
 @app.get("/api/v1/feed/{feed_id}")
 async def get_feed(feed_id):
     try:
-        return await render_feed(feed_id)
+        rendered_feed = await render_feed(feed_id)
+        return Response(content=rendered_feed, media_type="application/xml")
     except FeedNotFound:
         raise HTTPException(status_code=404, detail="Feed not found")
