@@ -12,14 +12,28 @@ Tools for improving RSS feeds
 python3 -m venv env
 . env/bin/activate
 pip install -r requirements.txt
-cd src/rsstool
-python initdb.py
+cd src
+python -m rsstool.initdb
 ```
 
 ## Running locally
 
 ```sh
-uvicorn main:app --reload
+cd src
+RSS_USERNAME=unsafe RSS_PASSWORD=unsafe uvicorn rsstool.main:app --reload
+```
+
+## Running in Docker
+
+```sh
+docker build -t ssaamm/rss2 .
+docker run -ti \
+  -v "$(pwd)":/external \
+  -e DB_LOC='/external/rss.db' \
+  -e RSS_USERNAME='unsafe' \
+  -e RSS_PASSWORD='unsafe' \
+  -p 5001:5000 \
+  ssaamm/rss2
 ```
 
 ## Sample requests

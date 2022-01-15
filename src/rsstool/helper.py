@@ -13,8 +13,14 @@ import aiohttp as ahttp
 import PyRSS2Gen as rss
 import feedparser
 
-from constants import DB_LOC
-from models import CreateFeedRequest, CreateCombinedFeedRequest, CreateFilteredFeedRequest, FeedResponse, FeedNotFound
+from rsstool.constants import DB_LOC
+from rsstool.models import (
+    CreateFeedRequest,
+    CreateCombinedFeedRequest,
+    CreateFilteredFeedRequest,
+    FeedResponse,
+    FeedNotFound,
+)
 
 HEADERS = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0) Gecko/20100101 Firefox/95.0"}
 LOG = logging.getLogger(__name__)
@@ -106,10 +112,12 @@ async def render_combined_feed(config: Dict):
 
 async def save_to_cache(feed_id, rendered_feed: str):
     async with asql.connect(DB_LOC) as db:
+        params = {"min_dt": (dt.datetime.now() - dt.timedelta(minutes=15)).timestamp()}
+        await db.execute("DELETE FROM feed_cache WHERE created < :min_dt", params)
+
         params = {"id": feed_id, "value": rendered_feed, "created": dt.datetime.utcnow().timestamp()}
         await db.execute("INSERT INTO feed_cache(feed_id, value, created) VALUES (:id, :value, :created)", params)
         await db.commit()
-        # TODO delete old values out of cache
 
 
 async def render_filtered_feed(config: Dict) -> str:

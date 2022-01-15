@@ -3,7 +3,7 @@ import asyncio
 
 import aiosqlite as asql
 
-from constants import DB_LOC
+from rsstool.constants import DB_LOC
 
 queries = [
     """\
