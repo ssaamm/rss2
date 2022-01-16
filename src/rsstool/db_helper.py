@@ -1,8 +1,10 @@
 from typing import Optional, Dict, List
-import aiosqlite as asql
 import json
 import datetime as dt
 from collections import namedtuple
+import asyncio
+
+import aiosqlite as asql
 
 from rsstool.constants import DB_LOC
 
@@ -110,3 +112,30 @@ async def insert_feed_items(feed_items: List[FeedItem]):
             all_params,
         )
         await db.commit()
+
+
+async def _increment_click_count(feed_id: str, item_id: str, db):
+    params = {"feed_id": feed_id, "item_id": item_id}
+    await db.execute(
+        "UPDATE feed_item SET click_count = click_count + 1 WHERE feed_id = :feed_id AND id = :item_id", params
+    )
+
+
+async def _get_link(feed_id: str, item_id: str, db):
+    params = {"feed_id": feed_id, "item_id": item_id}
+    async with db.execute(
+        "SELECT link FROM feed_item WHERE id = :item_id and feed_id = :feed_id LIMIT 1", params
+    ) as cursor:
+        async for row in cursor:
+            return row[0]
+
+
+async def record_click_and_get_link(feed_id: str, item_id: str):
+    async with asql.connect(DB_LOC) as db:
+        tasks = [
+            asyncio.ensure_future(_increment_click_count(feed_id, item_id, db)),
+            asyncio.ensure_future(_get_link(feed_id, item_id, db)),
+        ]
+        _, link = await asyncio.gather(*tasks)
+        await db.commit()
+    return link

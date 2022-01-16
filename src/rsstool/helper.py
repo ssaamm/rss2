@@ -7,9 +7,9 @@ import datetime as dt
 import time
 import logging
 import os
+import asyncio
 
 from fastapi import BackgroundTasks
-import asyncio
 import aiohttp as ahttp
 import PyRSS2Gen as rss
 import feedparser
