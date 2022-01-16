@@ -140,7 +140,8 @@ def build_digest_entry(feed: db.Feed, window_start: dt.datetime, items_in_window
     combined_categories = frozenset(it.chain.from_iterable(i.categories for i in items_in_window))
     return rss.RSSItem(
         title=f"Digest for {window_start}",
-        link=build_link(feed),  # TODO build an HTML page to view a specific digest entry?
+        link=build_link(feed),
+        guid=f"{feed.feed_id}-{window_start:%Y%m%d%H%M%S}",
         description=content,
         author=combined_authors,
         categories=combined_categories,

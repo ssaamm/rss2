@@ -181,7 +181,6 @@ async def get_windowed_items(feed: Feed, limit: int = 10):
         "weekly": dt.timedelta(days=7),
     }[feed.config["cadence"]]
     windows_completed = int((now - start) / window_size)
-    print(start, now, windows_completed)
     # TODO what if < 1?
 
     first_window_start = start + (windows_completed - limit) * window_size
@@ -192,7 +191,6 @@ async def get_windowed_items(feed: Feed, limit: int = 10):
         tasks = [asyncio.ensure_future(_get_feed_items_in_window(db, feed.feed_id, s, e)) for s, e in window_dates]
         results = await asyncio.gather(*tasks)
 
-    print([len(r) for r in results])
     return {wd[0]: r for wd, r in zip(window_dates, results)}
 
 
