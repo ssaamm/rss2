@@ -9,7 +9,7 @@ app = FastAPI()
 security = HTTPBasic()
 
 
-@app.post("/api/v1/feed", response_model=FeedResponse)
+@app.post("/api/v1/feed", response_model=FeedResponse, status_code=status.HTTP_201_CREATED)
 async def create_feed(request: CreateFeedRequest, credentials: HTTPBasicCredentials = Depends(security)):
     if credentials.username != USERNAME or credentials.password != PASSWORD:  # TODO compare_digest
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")

@@ -15,25 +15,19 @@ import feedparser
 
 from rsstool.constants import DB_LOC
 import rsstool.db_helper as db
-from rsstool.models import (
-    CreateFeedRequest,
-    CreateCombinedFeedRequest,
-    CreateFilteredFeedRequest,
-    FeedResponse,
-    FeedNotFound,
-)
+import rsstool.models as mdl
 
 HEADERS = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0) Gecko/20100101 Firefox/95.0"}
 LOG = logging.getLogger(__name__)
 
 
-async def make_combined_feed(request: CreateCombinedFeedRequest):
+async def make_combined_feed(request: mdl.CreateCombinedFeedRequest):
     # TODO validate feed sources
     feed_id = str(uuid.uuid4())
     await db.insert_feed(
         feed_id, request.type, {"sources": request.sources, "title": request.title, "description": request.description}
     )
-    return FeedResponse(url=f"/api/v1/feed/{feed_id}")
+    return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
 def datetime_from_struct_time(st: time.struct_time) -> dt.datetime:
@@ -143,7 +137,7 @@ async def render_feed(feed_id) -> str:
 
     feed = await db.get_feed(feed_id)
     if feed is None:
-        raise FeedNotFound()
+        raise mdl.FeedNotFound()
 
     handlers = {
         "combine": render_combined_feed,
@@ -158,7 +152,7 @@ async def render_feed(feed_id) -> str:
     return rendered_feed
 
 
-async def make_filtered_feed(request: CreateCombinedFeedRequest):
+async def make_filtered_feed(request: mdl.CreateCombinedFeedRequest):
     feed_id = str(uuid.uuid4())
     await db.insert_feed(
         feed_id,
@@ -169,24 +163,35 @@ async def make_filtered_feed(request: CreateCombinedFeedRequest):
             "require_in_title": request.require_in_title,
         },
     )
-    return FeedResponse(url=f"/api/v1/feed/{feed_id}")
+    return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
+
+
+async def make_digest_feed(request: mdl.CreateDigestFeedRequest):
+    return mdl.FeedResponse(url="yolo")
 
 
 def validate_feed_request(r):
-    if isinstance(r, CreateFilteredFeedRequest) and r.type != "filter":
-        raise ValueError("type should be filter")
-    if isinstance(r, CreateCombinedFeedRequest) and r.type != "combine":
-        raise ValueError("type should be combine")
-    elif not isinstance(r, (CreateFilteredFeedRequest, CreateCombinedFeedRequest)):
-        raise ValueError("unknown type")
+    known_types = {
+        mdl.CreateFilteredFeedRequest: "filter",
+        mdl.CreateCombinedFeedRequest: "combine",
+        mdl.CreateDigestFeedRequest: "digest",
+    }
+    for request_type, type_value in known_types.items():
+        if isinstance(r, request_type):
+            if r.type == type_value:
+                return
+            else:
+                raise ValueError(f"type should be '{type_value}' for {type(r)}")
+    raise ValueError(f"Unknown type {type(r)}")
 
 
-async def handle_create_feed_request(request: CreateFeedRequest):
+async def handle_create_feed_request(request: mdl.CreateFeedRequest):
     validate_feed_request(request)
 
     handlers = {
-        CreateCombinedFeedRequest: make_combined_feed,
-        CreateFilteredFeedRequest: make_filtered_feed,
+        mdl.CreateCombinedFeedRequest: make_combined_feed,
+        mdl.CreateFilteredFeedRequest: make_filtered_feed,
+        mdl.CreateDigestFeedRequest: make_digest_feed,
     }
     this_handler = None
     for type, handler in handlers.items():
