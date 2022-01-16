@@ -12,6 +12,7 @@ queries = [
         type TEXT,
         config TEXT,
         last_accessed INTEGER,
+        created INTEGER,
         deleted INTEGER
     ) WITHOUT ROWID;
     """,

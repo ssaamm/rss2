@@ -67,7 +67,7 @@ docker run -ti \
 - [x] Add ability for users to name/describe feed
 - [x] Put some kind of auth in front of feed creation/deletion
 - [x] Update `last_accessed` when feed is accessed
-- [ ] "Created date" on Feed object
+- [x] "Created date" on Feed object
 - [ ] Make sure podcast images come through
 - [ ] Some abstraction around 'source'
 - [ ] Allow deleting feeds

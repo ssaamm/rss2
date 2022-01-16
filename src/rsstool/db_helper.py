@@ -29,21 +29,25 @@ async def save_to_cache(feed_id, rendered_feed: str):
         await db.commit()
 
 
-Feed = namedtuple("Feed", ["feed_id", "type", "config", "last_accessed", "deleted"])
+Feed = namedtuple("Feed", ["feed_id", "type", "config", "last_accessed", "created"])
 
 
-async def insert_feed(feed_id: str, type: str, config: Dict):
+async def insert_feed(feed_id: str, type: str, config: Dict, created: Optional[dt.datetime] = None):
+    if created is None:
+        created = dt.datetime.utcnow()
+
     async with asql.connect(DB_LOC) as db:
         params = {
             "id": feed_id,
             "type": type,
             "config": json.dumps(config),
             "last_accessed": None,
+            "created": created.timestamp(),
             "deleted": 0,
         }
         await db.execute(
-            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
-            :id, :type, :config, :last_accessed, :deleted
+            """INSERT INTO feed(id, type, config, last_accessed, created, deleted) VALUES (
+            :id, :type, :config, :last_accessed, :created, :deleted
         )""",
             params,
         )
@@ -54,7 +58,7 @@ async def get_feed(feed_id) -> Optional[Feed]:
     async with asql.connect(DB_LOC) as db:
         params = {"id": feed_id}
         async with db.execute(
-            "SELECT id, type, config, last_accessed, deleted FROM feed WHERE id = :id AND deleted = 0 LIMIT 1", params
+            "SELECT id, type, config, last_accessed, created FROM feed WHERE id = :id AND deleted = 0 LIMIT 1", params
         ) as cursor:
             async for row in cursor:
                 return Feed(
@@ -62,7 +66,7 @@ async def get_feed(feed_id) -> Optional[Feed]:
                     type=row[1],
                     config=json.loads(row[2]),
                     last_accessed=None if not row[3] else dt.datetime.utcfromtimestamp(row[3]),
-                    deleted=row[4],
+                    created=dt.datetime.utcfromtimestamp(row[4]),
                 )
     return None
 
