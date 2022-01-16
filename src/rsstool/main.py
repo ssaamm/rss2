@@ -21,9 +21,9 @@ async def create_feed(
 
 
 @app.get("/api/v1/feed/{feed_id}")
-async def get_feed(feed_id):
+async def get_feed(feed_id, bg: BackgroundTasks):
     try:
-        rendered_feed = await helper.render_feed(feed_id)
+        rendered_feed = await helper.render_feed(feed_id, bg)
         return Response(content=rendered_feed, media_type="application/xml")
     except FeedNotFound:
         raise HTTPException(status_code=404, detail="Feed not found")

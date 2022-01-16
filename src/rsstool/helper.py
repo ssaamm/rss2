@@ -1,7 +1,7 @@
 import uuid
 import json
 import pickle
-from typing import Dict
+from typing import Dict, List
 import itertools as it
 import datetime as dt
 import time
@@ -73,7 +73,12 @@ def build_link(feed: db.Feed):
     return "http://" + os.getenv("VIRTUAL_HOST", "localhost:8000") + "/api/v1/feed/" + feed.feed_id
 
 
-async def render_combined_feed(feed: db.Feed):
+def build_item_link(feed_item: db.FeedItem):
+    host = os.getenv("VIRTUAL_HOST", "localhost:8000")
+    return f"http://{host}/api/v1/feed/{feed_item.feed_id}/item/{feed_item.id}"
+
+
+async def render_combined_feed(feed: db.Feed, _: BackgroundTasks):
     bodies = []
     async with ahttp.ClientSession(headers=HEADERS) as session:
         tasks = [asyncio.ensure_future(fetch_feed(session, url)) for url in feed.config["sources"]]
@@ -90,7 +95,7 @@ async def render_combined_feed(feed: db.Feed):
     ).to_xml()
 
 
-async def render_filtered_feed(feed: db.Feed) -> str:
+async def render_filtered_feed(feed: db.Feed, _: BackgroundTasks) -> str:
     async with ahttp.ClientSession(headers=HEADERS) as session:
         body = await fetch_feed(session, feed.config["source"])
     parsed_feed = feedparser.parse(body)
@@ -125,7 +130,44 @@ async def render_filtered_feed(feed: db.Feed) -> str:
     ).to_xml()
 
 
-async def render_feed(feed_id) -> str:
+def _render_one_item(item: db.FeedItem):
+    return f'<li>{item.publish_date} - <a href="{build_item_link(item)}">{item.title}</a> ({item.author})</li>'
+
+
+def build_digest_entry(feed: db.Feed, window_start: dt.datetime, items_in_window: List[db.FeedItem]):
+    content = "<p><ul>" + "".join(_render_one_item(i) for i in items_in_window) + "</ul></p>"
+    combined_authors = ", ".join(frozenset(i.author for i in items_in_window))
+    combined_categories = frozenset(it.chain.from_iterable(i.categories for i in items_in_window))
+    return rss.RSSItem(
+        title=f"Digest for {window_start}",
+        link=build_link(feed),  # TODO build an HTML page to view a specific digest entry?
+        description=content,
+        author=combined_authors,
+        categories=combined_categories,
+        pubDate=window_start,
+        source=None,
+    )
+
+
+async def render_digest_feed(feed: db.Feed, bg: BackgroundTasks) -> str:
+    windows = await db.get_windowed_items(feed)
+    bg.add_task(index_source, feed.feed_id)
+
+    feed_title = feed.config.get("title", "an RSS feed")
+    return rss.RSS2(
+        title=f"{feed.config['cadence']} digest of {feed_title}",
+        link=build_link(feed),
+        description=feed.config.get("description", None),
+        lastBuildDate=dt.datetime.utcnow(),
+        items=[
+            build_digest_entry(feed, window_start, items_in_window)
+            for window_start, items_in_window in windows.items()
+            if items_in_window
+        ],
+    ).to_xml()
+
+
+async def render_feed(feed_id, bg: BackgroundTasks) -> str:
     tasks = [
         asyncio.ensure_future(db.maybe_get_cache(feed_id)),
         asyncio.ensure_future(db.record_feed_access(feed_id)),
@@ -143,12 +185,13 @@ async def render_feed(feed_id) -> str:
     handlers = {
         "combine": render_combined_feed,
         "filter": render_filtered_feed,
+        "digest": render_digest_feed,
     }
     handler = handlers.get(feed.type)
     if handler is None:
-        raise RuntimeError(f"Cannot render feed for {row[0]}")
+        raise RuntimeError(f"Cannot render '{feed.type}' feed")
 
-    rendered_feed = await handler(feed)
+    rendered_feed = await handler(feed, bg)
     await db.save_to_cache(feed_id, rendered_feed)
     return rendered_feed
 
@@ -189,6 +232,9 @@ async def index_source(feed_id: str):
         )
         for entry in parsed_feed["entries"]
     ]
+    await db.update_digest_meta(
+        feed, title=parsed_feed["feed"]["title"], description=parsed_feed["feed"]["description"]
+    )
     await db.insert_feed_items(feed_items)
 
 

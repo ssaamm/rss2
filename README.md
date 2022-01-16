@@ -4,7 +4,7 @@ Tools for improving RSS feeds
 
 ## Resources
 
-- [Architecture and plan](https://excalidraw.com/#json=p8wAL03HuewmfTlidkICl,JgOR829QRNReeC62Rvqabg)
+- [Architecture and plan](https://excalidraw.com/#json=bKNgJLOzztGBu6IHmXqJ8,zqcRoQW34qUqd8YsEeLpRg)
 
 ## Setup
 
