@@ -64,7 +64,7 @@ docker run -ti \
 
 # TODO list
 
-- [ ] Add ability for users to name/describe feed
+- [x] Add ability for users to name/describe feed
 - [ ] Pre-commit hooks -- formatting, isort
 - [ ] lol write tests
 - [ ] Update `last_accessed` when feed is accessed
@@ -72,3 +72,4 @@ docker run -ti \
 - [x] Put some kind of auth in front of feed creation/deletion
 - [ ] Make sure podcast images come through
 - [ ] Some abstraction around 'source'
+- [ ] "Created date" on Feed object

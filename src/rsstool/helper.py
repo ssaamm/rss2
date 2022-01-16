@@ -6,6 +6,7 @@ import itertools as it
 import datetime as dt
 import time
 import logging
+import os
 
 import asyncio
 import aiohttp as ahttp
@@ -29,7 +30,9 @@ LOG = logging.getLogger(__name__)
 async def make_combined_feed(request: CreateCombinedFeedRequest):
     # TODO validate feed sources
     feed_id = str(uuid.uuid4())
-    await db.insert_feed(feed_id, request.type, {"sources": request.sources})
+    await db.insert_feed(
+        feed_id, request.type, {"sources": request.sources, "title": request.title, "description": request.description}
+    )
     return FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
@@ -71,6 +74,10 @@ async def fetch_feed(session, url) -> str:
         return await response.text()
 
 
+def build_link(feed: db.Feed):
+    return "http://" + os.getenv("VIRTUAL_HOST", "localhost:8000") + "/api/v1/feed/" + feed.feed_id
+
+
 async def render_combined_feed(feed: db.Feed):
     bodies = []
     async with ahttp.ClientSession(headers=HEADERS) as session:
@@ -80,7 +87,11 @@ async def render_combined_feed(feed: db.Feed):
     feeds = [feedparser.parse(b) for b in bodies]
     all_items = sorted(it.chain.from_iterable(build_entries(f["entries"]) for f in feeds), key=lambda ri: ri.pubDate)
     return rss.RSS2(
-        title="TODO", link="TODO", description="TODO", lastBuildDate=dt.datetime.utcnow(), items=all_items
+        title=feed.config.get("title", "A combined feed"),
+        link=build_link(feed),
+        description=feed.config.get("description", "A combined feed"),
+        lastBuildDate=dt.datetime.utcnow(),
+        items=all_items,
     ).to_xml()
 
 

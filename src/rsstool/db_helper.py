@@ -7,24 +7,6 @@ from collections import namedtuple
 from rsstool.constants import DB_LOC
 
 
-async def insert_feed(feed_id: str, type: str, config: Dict):
-    async with asql.connect(DB_LOC) as db:
-        params = {
-            "id": feed_id,
-            "type": type,
-            "config": json.dumps(config),
-            "last_accessed": None,
-            "deleted": 0,
-        }
-        await db.execute(
-            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
-            :id, :type, :config, :last_accessed, :deleted
-        )""",
-            params,
-        )
-        await db.commit()
-
-
 async def maybe_get_cache(feed_id: str):
     async with asql.connect(DB_LOC) as db:
         params = {"id": feed_id, "min_dt": (dt.datetime.utcnow() - dt.timedelta(minutes=15)).timestamp()}
@@ -48,6 +30,24 @@ async def save_to_cache(feed_id, rendered_feed: str):
 
 
 Feed = namedtuple("Feed", ["feed_id", "type", "config", "last_accessed", "deleted"])
+
+
+async def insert_feed(feed_id: str, type: str, config: Dict):
+    async with asql.connect(DB_LOC) as db:
+        params = {
+            "id": feed_id,
+            "type": type,
+            "config": json.dumps(config),
+            "last_accessed": None,
+            "deleted": 0,
+        }
+        await db.execute(
+            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
+            :id, :type, :config, :last_accessed, :deleted
+        )""",
+            params,
+        )
+        await db.commit()
 
 
 async def get_feed(feed_id) -> Optional[Feed]:

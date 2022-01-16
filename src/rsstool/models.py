@@ -17,6 +17,8 @@ class BaseCreateFeedRequest(BaseModel):
 class CreateCombinedFeedRequest(BaseModel):
     type = "combine"
     sources: List[str]
+    title: str = "A combined feed"
+    description: str = "A combination of feeds"
 
 
 class CreateFilteredFeedRequest(BaseModel):
