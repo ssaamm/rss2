@@ -24,6 +24,20 @@ queries = [
         FOREIGN KEY(feed_id) REFERENCES feed(id)
     );
     """,
+    """\
+    CREATE TABLE feed_item (
+        id TEXT PRIMARY KEY,
+        feed_id TEXT,
+        link TEXT,
+        title TEXT,
+        author TEXT,
+        categories TEXT,
+        publish_date TEXT,
+        click_count INTEGER,
+        FOREIGN KEY(feed_id) REFERENCES feed(id),
+        UNIQUE (feed_id, link)
+    ) WITHOUT ROWID;
+    """,
 ]
 
 

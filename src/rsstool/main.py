@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status, Response
+from fastapi import Depends, FastAPI, HTTPException, status, Response, BackgroundTasks
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from rsstool.models import FeedResponse, CreateFeedRequest, FeedNotFound
@@ -10,10 +10,12 @@ security = HTTPBasic()
 
 
 @app.post("/api/v1/feed", response_model=FeedResponse, status_code=status.HTTP_201_CREATED)
-async def create_feed(request: CreateFeedRequest, credentials: HTTPBasicCredentials = Depends(security)):
+async def create_feed(
+    request: CreateFeedRequest, bg: BackgroundTasks, credentials: HTTPBasicCredentials = Depends(security)
+):
     if credentials.username != USERNAME or credentials.password != PASSWORD:  # TODO compare_digest
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect username or password")
-    return await handle_create_feed_request(request)
+    return await handle_create_feed_request(request, bg)
 
 
 @app.get("/api/v1/feed/{feed_id}")

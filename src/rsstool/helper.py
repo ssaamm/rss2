@@ -8,6 +8,7 @@ import time
 import logging
 import os
 
+from fastapi import BackgroundTasks
 import asyncio
 import aiohttp as ahttp
 import PyRSS2Gen as rss
@@ -21,7 +22,7 @@ HEADERS = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0)
 LOG = logging.getLogger(__name__)
 
 
-async def make_combined_feed(request: mdl.CreateCombinedFeedRequest):
+async def make_combined_feed(request: mdl.CreateCombinedFeedRequest, _: BackgroundTasks):
     # TODO validate feed sources
     feed_id = str(uuid.uuid4())
     await db.insert_feed(
@@ -152,7 +153,7 @@ async def render_feed(feed_id) -> str:
     return rendered_feed
 
 
-async def make_filtered_feed(request: mdl.CreateCombinedFeedRequest):
+async def make_filtered_feed(request: mdl.CreateCombinedFeedRequest, _: BackgroundTasks):
     feed_id = str(uuid.uuid4())
     await db.insert_feed(
         feed_id,
@@ -166,8 +167,40 @@ async def make_filtered_feed(request: mdl.CreateCombinedFeedRequest):
     return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
-async def make_digest_feed(request: mdl.CreateDigestFeedRequest):
-    return mdl.FeedResponse(url="yolo")
+async def index_source(feed_id: str):
+    feed = await db.get_feed(feed_id)
+    if feed.type != "digest":
+        raise ValueError("can only index 'digest' feeds")
+
+    async with ahttp.ClientSession(headers=HEADERS) as session:
+        body = await fetch_feed(session, feed.config["source"])
+    parsed_feed = feedparser.parse(body)
+
+    feed_items = [
+        db.FeedItem(
+            id=str(uuid.uuid4()),
+            feed_id=feed_id,
+            link=entry["link"],
+            title=entry["title"],
+            author=entry["author"],
+            categories=[tag["term"] for tag in entry.get("tags", [])],
+            publish_date=datetime_from_struct_time(entry["published_parsed"]),
+            click_count=0,
+        )
+        for entry in parsed_feed["entries"]
+    ]
+    await db.insert_feed_items(feed_items)
+
+
+async def make_digest_feed(request: mdl.CreateDigestFeedRequest, bg: BackgroundTasks):
+    feed_id = str(uuid.uuid4())
+    await db.insert_feed(
+        feed_id,
+        request.type,
+        {"source": request.source, "cadence": request.cadence, "start_timestamp": request.start_timestamp},
+    )
+    bg.add_task(index_source, feed_id)
+    return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
 def validate_feed_request(r):
@@ -185,7 +218,7 @@ def validate_feed_request(r):
     raise ValueError(f"Unknown type {type(r)}")
 
 
-async def handle_create_feed_request(request: mdl.CreateFeedRequest):
+async def handle_create_feed_request(request: mdl.CreateFeedRequest, bg: BackgroundTasks):
     validate_feed_request(request)
 
     handlers = {
@@ -202,4 +235,4 @@ async def handle_create_feed_request(request: mdl.CreateFeedRequest):
     if this_handler is None:
         raise RuntimeError("cannot handle this feed request")
 
-    return await this_handler(request)
+    return await this_handler(request, bg)

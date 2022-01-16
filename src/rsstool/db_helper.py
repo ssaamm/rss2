@@ -1,4 +1,4 @@
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 import aiosqlite as asql
 import json
 import datetime as dt
@@ -75,4 +75,38 @@ async def record_feed_access(feed_id: str):
     async with asql.connect(DB_LOC) as db:
         params = {"id": feed_id, "now": dt.datetime.utcnow().timestamp()}
         await db.execute("UPDATE feed SET last_accessed = :now WHERE id = :id", params)
+        await db.commit()
+
+
+FeedItem = namedtuple(
+    "FeedItem", ["id", "feed_id", "link", "title", "author", "categories", "publish_date", "click_count"]
+)
+
+
+async def insert_feed_items(feed_items: List[FeedItem]):
+    async with asql.connect(DB_LOC) as db:
+        await db.execute("BEGIN")
+        all_params = [
+            {
+                "id": fi.id,
+                "feed_id": fi.feed_id,
+                "link": fi.link,
+                "title": fi.title,
+                "author": fi.author,
+                "categories": json.dumps(fi.categories),
+                "publish_date": fi.publish_date.timestamp(),
+                "click_count": fi.click_count,
+            }
+            for fi in feed_items
+        ]
+        await db.executemany(
+            """INSERT INTO feed_item(id, feed_id, link, title, author, categories, publish_date, click_count)
+            VALUES (:id, :feed_id, :link, :title, :author, :categories, :publish_date, :click_count)
+            ON CONFLICT(feed_id, link) DO UPDATE SET
+              title = excluded.title,
+              author = excluded.author,
+              categories = excluded.categories,
+              publish_date = excluded.publish_date""",
+            all_params,
+        )
         await db.commit()
