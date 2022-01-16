@@ -131,7 +131,13 @@ async def render_filtered_feed(feed: db.Feed) -> str:
 
 
 async def render_feed(feed_id) -> str:
-    cached_value = await db.maybe_get_cache(feed_id)
+    tasks = [
+        asyncio.ensure_future(db.maybe_get_cache(feed_id)),
+        asyncio.ensure_future(db.record_feed_access(feed_id)),
+    ]
+    # The order of result values corresponds to the order of awaitables
+    # https://docs.python.org/3/library/asyncio-task.html#asyncio.gather
+    cached_value, _ = await asyncio.gather(*tasks)
     if cached_value is not None:
         return cached_value
 

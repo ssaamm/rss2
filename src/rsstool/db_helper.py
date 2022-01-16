@@ -21,7 +21,7 @@ async def maybe_get_cache(feed_id: str):
 
 async def save_to_cache(feed_id, rendered_feed: str):
     async with asql.connect(DB_LOC) as db:
-        params = {"min_dt": (dt.datetime.now() - dt.timedelta(minutes=15)).timestamp()}
+        params = {"min_dt": (dt.datetime.utcnow() - dt.timedelta(minutes=15)).timestamp()}
         await db.execute("DELETE FROM feed_cache WHERE created < :min_dt", params)
 
         params = {"id": feed_id, "value": rendered_feed, "created": dt.datetime.utcnow().timestamp()}
@@ -65,3 +65,10 @@ async def get_feed(feed_id) -> Optional[Feed]:
                     deleted=row[4],
                 )
     return None
+
+
+async def record_feed_access(feed_id: str):
+    async with asql.connect(DB_LOC) as db:
+        params = {"id": feed_id, "now": dt.datetime.utcnow().timestamp()}
+        await db.execute("UPDATE feed SET last_accessed = :now WHERE id = :id", params)
+        await db.commit()
