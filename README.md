@@ -71,3 +71,4 @@ docker run -ti \
 - [ ] Allow deleting feeds
 - [x] Put some kind of auth in front of feed creation/deletion
 - [ ] Make sure podcast images come through
+- [ ] Some abstraction around 'source'

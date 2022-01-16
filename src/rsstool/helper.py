@@ -8,12 +8,12 @@ import time
 import logging
 
 import asyncio
-import aiosqlite as asql
 import aiohttp as ahttp
 import PyRSS2Gen as rss
 import feedparser
 
 from rsstool.constants import DB_LOC
+import rsstool.db_helper as db
 from rsstool.models import (
     CreateFeedRequest,
     CreateCombinedFeedRequest,
@@ -29,34 +29,8 @@ LOG = logging.getLogger(__name__)
 async def make_combined_feed(request: CreateCombinedFeedRequest):
     # TODO validate feed sources
     feed_id = str(uuid.uuid4())
-    async with asql.connect(DB_LOC) as db:
-        params = {
-            "id": feed_id,
-            "type": request.type,
-            "config": json.dumps({"sources": request.sources}),
-            "last_accessed": None,
-            "deleted": 0,
-        }
-        await db.execute(
-            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
-            :id, :type, :config, :last_accessed, :deleted
-        )""",
-            params,
-        )
-        await db.commit()
+    await db.insert_feed(feed_id, request.type, {"sources": request.sources})
     return FeedResponse(url=f"/api/v1/feed/{feed_id}")
-
-
-async def maybe_get_cache(feed_id: str):
-    async with asql.connect(DB_LOC) as db:
-        params = {"id": feed_id, "min_dt": (dt.datetime.utcnow() - dt.timedelta(minutes=15)).timestamp()}
-        async with db.execute(
-            "SELECT value FROM feed_cache WHERE feed_id = :id AND created >= :min_dt ORDER BY created DESC LIMIT 1",
-            params,
-        ) as cursor:
-            async for row in cursor:
-                return row[0]
-    return None
 
 
 def datetime_from_struct_time(st: time.struct_time) -> dt.datetime:
@@ -92,15 +66,15 @@ def build_entries(entries):
         )
 
 
-async def get_feed(session, url) -> str:
+async def fetch_feed(session, url) -> str:
     async with session.get(url) as response:
         return await response.text()
 
 
-async def render_combined_feed(config: Dict):
+async def render_combined_feed(feed: db.Feed):
     bodies = []
     async with ahttp.ClientSession(headers=HEADERS) as session:
-        tasks = [asyncio.ensure_future(get_feed(session, url)) for url in config["sources"]]
+        tasks = [asyncio.ensure_future(fetch_feed(session, url)) for url in feed.config["sources"]]
         bodies = await asyncio.gather(*tasks)
 
     feeds = [feedparser.parse(b) for b in bodies]
@@ -110,35 +84,25 @@ async def render_combined_feed(config: Dict):
     ).to_xml()
 
 
-async def save_to_cache(feed_id, rendered_feed: str):
-    async with asql.connect(DB_LOC) as db:
-        params = {"min_dt": (dt.datetime.now() - dt.timedelta(minutes=15)).timestamp()}
-        await db.execute("DELETE FROM feed_cache WHERE created < :min_dt", params)
-
-        params = {"id": feed_id, "value": rendered_feed, "created": dt.datetime.utcnow().timestamp()}
-        await db.execute("INSERT INTO feed_cache(feed_id, value, created) VALUES (:id, :value, :created)", params)
-        await db.commit()
-
-
-async def render_filtered_feed(config: Dict) -> str:
+async def render_filtered_feed(feed: db.Feed) -> str:
     async with ahttp.ClientSession(headers=HEADERS) as session:
-        body = await get_feed(session, config["source"])
-    feed = feedparser.parse(body)
+        body = await fetch_feed(session, feed.config["source"])
+    parsed_feed = feedparser.parse(body)
     filtered_items = []
-    for entry in feed["entries"]:
-        if config["require_in_title"] and any(
-            kw.lower() not in entry["title"].lower() for kw in config["require_in_title"]
+    for entry in parsed_feed["entries"]:
+        if feed.config["require_in_title"] and any(
+            kw.lower() not in entry["title"].lower() for kw in feed.config["require_in_title"]
         ):
             continue
-        if config["disallow_in_title"] and any(
-            kw.lower() in entry["title"].lower() for kw in config["disallow_in_title"]
+        if feed.config["disallow_in_title"] and any(
+            kw.lower() in entry["title"].lower() for kw in feed.config["disallow_in_title"]
         ):
             continue
 
         filtered_items.append(
             rss.RSSItem(
                 title=entry["title"],
-                link=entry.get("link", config["source"]),
+                link=entry.get("link", feed.config["source"]),
                 description=get_description(entry),
                 author=entry["author"],
                 categories=[tag["term"] for tag in entry.get("tags", [])],
@@ -147,60 +111,47 @@ async def render_filtered_feed(config: Dict) -> str:
             )
         )
     return rss.RSS2(
-        title=feed["feed"]["title"],
-        link=feed["feed"]["link"],
-        description=feed["feed"]["subtitle"],
+        title=parsed_feed["feed"]["title"],
+        link=parsed_feed["feed"]["link"],
+        description=parsed_feed["feed"]["subtitle"],
         lastBuildDate=dt.datetime.utcnow(),
         items=filtered_items,
     ).to_xml()
 
 
 async def render_feed(feed_id) -> str:
-    cached_value = await maybe_get_cache(feed_id)
+    cached_value = await db.maybe_get_cache(feed_id)
     if cached_value is not None:
         return cached_value
+
+    feed = await db.get_feed(feed_id)
+    if feed is None:
+        raise FeedNotFound()
 
     handlers = {
         "combine": render_combined_feed,
         "filter": render_filtered_feed,
     }
-    async with asql.connect(DB_LOC) as db:
-        params = {"id": feed_id}
-        async with db.execute("SELECT type, config FROM feed WHERE id = :id AND deleted = 0 LIMIT 1", params) as cursor:
-            async for row in cursor:
-                handler = handlers.get(row[0])
-                if handler is None:
-                    raise RuntimeError(f"Cannot render feed for {row[0]}")
+    handler = handlers.get(feed.type)
+    if handler is None:
+        raise RuntimeError(f"Cannot render feed for {row[0]}")
 
-                rendered_feed = await handler(json.loads(row[1]))
-                await save_to_cache(feed_id, rendered_feed)
-                return rendered_feed
-    raise FeedNotFound()
+    rendered_feed = await handler(feed)
+    await db.save_to_cache(feed_id, rendered_feed)
+    return rendered_feed
 
 
 async def make_filtered_feed(request: CreateCombinedFeedRequest):
     feed_id = str(uuid.uuid4())
-    async with asql.connect(DB_LOC) as db:
-        params = {
-            "id": feed_id,
-            "type": request.type,
-            "config": json.dumps(
-                {
-                    "source": request.source,
-                    "disallow_in_title": request.disallow_in_title,
-                    "require_in_title": request.require_in_title,
-                }
-            ),
-            "last_accessed": None,
-            "deleted": 0,
-        }
-        await db.execute(
-            """INSERT INTO feed(id, type, config, last_accessed, deleted) VALUES (
-            :id, :type, :config, :last_accessed, :deleted
-        )""",
-            params,
-        )
-        await db.commit()
+    await db.insert_feed(
+        feed_id,
+        request.type,
+        {
+            "source": request.source,
+            "disallow_in_title": request.disallow_in_title,
+            "require_in_title": request.require_in_title,
+        },
+    )
     return FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
