@@ -112,7 +112,7 @@ async def render_filtered_feed(feed: db.Feed, _: BackgroundTasks) -> str:
 
         filtered_items.append(
             rss.RSSItem(
-                title=entry["title"],
+                title=entry.get("title"),
                 link=entry.get("link", feed.config["source"]),
                 description=get_description(entry),
                 author=entry["author"],
@@ -136,7 +136,7 @@ def _render_one_item(item: db.FeedItem):
 
 def build_digest_entry(feed: db.Feed, window_start: dt.datetime, items_in_window: List[db.FeedItem]):
     content = "<p><ul>" + "".join(_render_one_item(i) for i in items_in_window) + "</ul></p>"
-    combined_authors = ", ".join(frozenset(i.author for i in items_in_window))
+    combined_authors = ", ".join(frozenset(i.author or "Unknown author" for i in items_in_window))
     combined_categories = frozenset(it.chain.from_iterable(i.categories for i in items_in_window))
     return rss.RSSItem(
         title=f"Digest for {window_start}",
@@ -223,9 +223,9 @@ async def index_source(feed_id: str):
         db.FeedItem(
             id=str(uuid.uuid4()),
             feed_id=feed_id,
-            link=entry["link"],
-            title=entry["title"],
-            author=entry["author"],
+            link=entry.get("link"),
+            title=entry.get("title"),
+            author=entry.get("author"),
             categories=[tag["term"] for tag in entry.get("tags", [])],
             publish_date=datetime_from_struct_time(entry["published_parsed"]),
             click_count=0,
