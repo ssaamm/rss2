@@ -62,6 +62,17 @@ docker run -ti \
 }
 ```
 
+## Useful queries
+
+Most recently accessed feeds
+```sql
+select datetime(last_accessed, 'unixepoch', 'localtime') as last_access_local
+  , *
+  from feed
+  order by 1 desc
+  limit 100
+```
+
 # TODO list
 
 - [x] Add ability for users to name/describe feed
