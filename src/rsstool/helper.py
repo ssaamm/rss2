@@ -110,10 +110,15 @@ async def render_filtered_feed(feed: db.Feed, _: BackgroundTasks) -> str:
         ):
             continue
 
+        link = entry.get("link")
+        if link is None:
+            link = entry.get("links", [{"href": feed.config["source"]}])[0]
+            link = link["href"]
+
         filtered_items.append(
             rss.RSSItem(
                 title=entry.get("title"),
-                link=entry.get("link", feed.config["source"]),
+                link=link,
                 description=get_description(entry),
                 author=entry["author"],
                 categories=[tag["term"] for tag in entry.get("tags", [])],
