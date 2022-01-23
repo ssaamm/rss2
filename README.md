@@ -84,3 +84,22 @@ select datetime(last_accessed, 'unixepoch', 'localtime') as last_access_local
 - [ ] Allow deleting feeds
 - [ ] Pre-commit hooks -- formatting, isort
 - [ ] lol write tests
+
+## ML sorting
+
+- Feed digest config: add attrs `user_sort_preference`, `model_available`
+  (bool)
+- `feed_item`: add col "score"
+- Scheduled job: (in container)
+  - For each feed w/ at least 30 items
+  - Do this CV thing
+  - If AU-ROC >= 0.7, set `model_available=True`
+  - Pickle models to resources dir (name: <feed_id>.pkl)
+  - Write to a table `train_job`
+    - (`feed_id`, `git_sha`, `train_start`, `train_duration`, `n_rows`,
+      `n_positives`, `nonzero_coef_ct`, `best_params`, `best_score`)
+- Update the indexing job
+  - For each item, if `model_available`, attempt to load model, then score it
+    (write to score col)
+  - Also write to a `feed_item_score` table
+    - (`item_id`, `score`, `time_scored`)
