@@ -9,14 +9,16 @@ import logging
 import os
 import asyncio
 
+import pandas as pd
 from fastapi import BackgroundTasks
 import aiohttp as ahttp
 import PyRSS2Gen as rss
 import feedparser
 
-from rsstool.constants import DB_LOC
+from rsstool.constants import DB_LOC, MODELS_LOC
 import rsstool.db_helper as db
 import rsstool.models as mdl
+import rsstool.ml_base as mlb
 
 HEADERS = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:95.0) Gecko/20100101 Firefox/95.0"}
 LOG = logging.getLogger(__name__)
@@ -136,6 +138,8 @@ async def render_filtered_feed(feed: db.Feed, _: BackgroundTasks) -> str:
 
 
 def _render_one_item(item: db.FeedItem):
+    if item.score:
+        return f'<li>{item.score:.03f} / {item.publish_date} - <a href="{build_item_link(item)}">{item.title}</a> ({item.author})</li>'
     return f'<li>{item.publish_date} - <a href="{build_item_link(item)}">{item.title}</a> ({item.author})</li>'
 
 
@@ -216,6 +220,31 @@ async def make_filtered_feed(request: mdl.CreateCombinedFeedRequest, _: Backgrou
     return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
 
 
+def maybe_load_model(feed: db.Feed):
+    try:
+        with open(os.path.join(MODELS_LOC, feed.feed_id + ".pkl"), "rb") as f:
+            model_with_meta = pickle.load(f)
+        return model_with_meta["model"]
+    except FileNotFoundError:
+        return None
+
+
+def score_items(items: List[db.FeedItem], model):
+    df = pd.DataFrame(
+        [
+            {
+                "title": i.title,
+                "categories": i.categories,
+                "author": i.author,
+                "link": i.link,
+            }
+            for i in items
+        ]
+    )
+    scores = model.predict_proba(df)[:, 1]
+    return [i._replace(score=score) for i, score in zip(items, scores)]
+
+
 async def index_source(feed_id: str):
     feed = await db.get_feed(feed_id)
     if feed.type != "digest":
@@ -235,9 +264,15 @@ async def index_source(feed_id: str):
             categories=[tag["term"] for tag in entry.get("tags", [])],
             publish_date=datetime_from_struct_time(entry["published_parsed"]),
             click_count=0,
+            score=None,
         )
         for entry in parsed_feed["entries"]
     ]
+
+    model = maybe_load_model(feed)
+    if model is not None:
+        feed_items = score_items(feed_items, model)
+
     await db.update_digest_meta(
         feed, title=parsed_feed["feed"]["title"], description=parsed_feed["feed"]["description"]
     )
