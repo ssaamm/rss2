@@ -82,7 +82,7 @@ async def record_feed_access(feed_id: str):
 
 
 FeedItem = namedtuple(
-    "FeedItem", ["id", "feed_id", "link", "title", "author", "categories", "publish_date", "click_count"]
+    "FeedItem", ["id", "feed_id", "link", "title", "author", "categories", "publish_date", "click_count", "score"]
 )
 
 
@@ -99,19 +99,30 @@ async def insert_feed_items(feed_items: List[FeedItem]):
                 "categories": json.dumps(fi.categories),
                 "publish_date": fi.publish_date.timestamp(),
                 "click_count": fi.click_count,
+                "score": fi.score,
             }
             for fi in feed_items
         ]
         await db.executemany(
-            """INSERT INTO feed_item(id, feed_id, link, title, author, categories, publish_date, click_count)
-            VALUES (:id, :feed_id, :link, :title, :author, :categories, :publish_date, :click_count)
+            """INSERT INTO feed_item(id, feed_id, link, title, author, categories, publish_date, click_count, score)
+            VALUES (:id, :feed_id, :link, :title, :author, :categories, :publish_date, :click_count, :score)
             ON CONFLICT(feed_id, link) DO UPDATE SET
               title = excluded.title,
               author = excluded.author,
               categories = excluded.categories,
-              publish_date = excluded.publish_date""",
+              publish_date = excluded.publish_date,
+              score = excluded.score""",
             all_params,
         )
+
+        scored_items = [i for i in feed_items if i.score is not None]
+        if scored_items:
+            score_time = dt.datetime.utcnow().timestamp()
+            all_params = [{"item_id": i.id, "score": i.score, "time_scored": score_time} for i in scored_items]
+            await db.executemany(
+                "INSERT INTO feed_item_score(item_id, score, time_scored) VALUES (:item_id, :score, :time_scored)",
+                all_params,
+            )
         await db.commit()
 
 
@@ -147,10 +158,11 @@ async def _get_feed_items_in_window(db, feed_id: str, start: dt.datetime, end: d
     all_items = []
     async with db.execute(
         """SELECT 
-            id, feed_id, link, title, author, categories, publish_date, click_count
+            id, feed_id, link, title, author, categories, publish_date, click_count, score
             FROM feed_item
             WHERE feed_id = :feed_id
-              AND publish_date >= :start AND publish_date < :end""",
+              AND publish_date >= :start AND publish_date < :end
+            ORDER BY COALESCE(score, 0) DESC""",
         params,
     ) as cursor:
         async for row in cursor:
@@ -164,6 +176,7 @@ async def _get_feed_items_in_window(db, feed_id: str, start: dt.datetime, end: d
                     categories=json.loads(row[5]),
                     publish_date=dt.datetime.utcfromtimestamp(float(row[6])),
                     click_count=row[7],
+                    score=row[8],
                 )
             )
     return all_items

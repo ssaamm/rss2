@@ -7,15 +7,13 @@ import logging
 import datetime as dt
 import time
 import subprocess
-from urllib.parse import urlparse
 import sys
 
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import make_pipeline, Pipeline
 from sklearn.compose import ColumnTransformer
 
 from sklearn.feature_extraction.text import TfidfVectorizer, HashingVectorizer
-from sklearn.preprocessing import MultiLabelBinarizer, OneHotEncoder, FunctionTransformer, StandardScaler
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer, StandardScaler
 from sklearn.feature_selection import VarianceThreshold, SelectPercentile
 from sklearn.linear_model import LogisticRegression
 
@@ -26,6 +24,7 @@ import pandas as pd
 import numpy as np
 
 from rsstool.constants import DB_LOC, MODELS_LOC
+import rsstool.ml_base as mlb
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 LOG = logging.getLogger(__name__)
@@ -55,33 +54,6 @@ def get_training_data(db_loc: str = DB_LOC) -> pd.DataFrame:
     return feed_items
 
 
-class MLBWrapper(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        self.mlb = MultiLabelBinarizer()
-
-    def fit(self, X, y=None):
-        self.mlb.fit(X)
-        return self
-
-    def transform(self, X):
-        return self.mlb.transform(X)
-
-
-def get_netloc(url):
-    if isinstance(url, str):
-        return urlparse(url).netloc
-    if isinstance(url, pd.Series):
-        return url.apply(get_netloc).values.reshape(-1, 1)
-
-
-def get_strlen(url):
-    if isinstance(url, str):
-        val = len(url)
-    if isinstance(url, pd.Series):
-        val = url.str.len()
-    return np.log(val).values.reshape(-1, 1)
-
-
 def build_model(feed_id, in_df, n_iter=1_000, n_jobs=4):
     if (in_df["feed_id"] != feed_id).sum() > 0:
         raise ValueError(f"Expected all feed_id values to be {feed_id}")
@@ -91,11 +63,15 @@ def build_model(feed_id, in_df, n_iter=1_000, n_jobs=4):
         [
             ("tfidf", TfidfVectorizer(ngram_range=(1, 2)), "title"),
             ("hashing", HashingVectorizer(), "title"),
-            ("mlb", MLBWrapper(), "categories"),
+            ("mlb", mlb.MLBWrapper(), "categories"),
             ("ohe", OneHotEncoder(handle_unknown="ignore"), ["author"]),
-            ("domain", make_pipeline(FunctionTransformer(get_netloc), OneHotEncoder(handle_unknown="ignore")), "link"),
-            ("url_len", FunctionTransformer(get_strlen), "link"),
-            ("title_len", FunctionTransformer(get_strlen), "title"),
+            (
+                "domain",
+                make_pipeline(FunctionTransformer(mlb.get_netloc), OneHotEncoder(handle_unknown="ignore")),
+                "link",
+            ),
+            ("url_len", FunctionTransformer(mlb.get_strlen), "link"),
+            ("title_len", FunctionTransformer(mlb.get_strlen), "title"),
         ],
         remainder="drop",
         n_jobs=1,
@@ -146,6 +122,22 @@ def get_coef_ct(est, effectively_zero=EPSILON):
     return {"total": total, "nonzero": nonzero, "ratio": nonzero / total}
 
 
+def store_meta(meta, db_loc: str = DB_LOC):
+    params = {
+        k: meta[k]
+        for k in ["feed_id", "git_sha", "train_start", "train_duration", "n_rows", "n_positives", "best_score"]
+    }
+    params["nonzero_coef_ct"] = meta["coef_ct"]["nonzero"]
+    params["best_params"] = json.dumps(meta["best_params"])
+    with sqlite3.connect(db_loc) as conn:
+        with contextlib.closing(conn.cursor()) as c:
+            c.execute(
+                """INSERT INTO train_job(feed_id, git_sha, train_start, train_duration, n_rows, n_positives, nonzero_coef_ct, best_params, best_score)
+                    VALUES (:feed_id, :git_sha, :train_start, :train_duration, :n_rows, :n_positives, :nonzero_coef_ct, :best_params, :best_score)""",
+                params,
+            )
+
+
 def build_all_models():
     start_time = dt.datetime.utcnow().timestamp()
     git_hash = (
@@ -162,7 +154,7 @@ def build_all_models():
         in_df = feed_items.query("feed_id == @feed_id")
 
         start_ctr = time.perf_counter()
-        n_iter = 1_000
+        n_iter = 8
         model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=8)
         meta = {
             "feed_id": feed_id,
@@ -176,6 +168,7 @@ def build_all_models():
             "best_params": model.best_params_,
             "best_score": model.best_score_,
         }
+        store_meta(meta)
         with open(os.path.join(MODELS_LOC, f"{feed_id}.pkl"), "wb") as f:
             pickle.dump({"model": model, "meta": meta}, f)
 

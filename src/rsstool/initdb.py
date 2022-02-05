@@ -67,7 +67,7 @@ migrations = {
         time_scored INTEGER,
         FOREIGN KEY(item_id) REFERENCES feed_item(id)
     );
-        """
+        """,
     ],
 }
 
@@ -75,10 +75,10 @@ migrations = {
 async def run_migrations(names: List[str]):
     async with asql.connect(DB_LOC) as db:
         for name in names:
-            queries = ['BEGIN'] + migrations[name] + ['COMMIT']
+            queries = ["BEGIN"] + migrations[name] + ["COMMIT"]
             for query in queries:
                 q = textwrap.dedent(query)
-                print('Running query:', q)
+                print("Running query:", q)
                 await db.execute(q)
             await db.commit()
 
