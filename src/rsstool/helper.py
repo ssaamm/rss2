@@ -261,7 +261,7 @@ async def index_source(feed_id: str):
             link=entry.get("link"),
             title=entry.get("title"),
             author=entry.get("author"),
-            categories=[tag["term"] for tag in entry.get("tags", [])],
+            categories=list({tag["term"].lower() for tag in entry.get("tags", [])}),
             publish_date=datetime_from_struct_time(entry["published_parsed"]),
             click_count=0,
             score=None,
