@@ -6,7 +6,9 @@ import json
 import logging
 import datetime as dt
 import time
+import subprocess
 from urllib.parse import urlparse
+import sys
 
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.pipeline import make_pipeline, Pipeline
@@ -29,6 +31,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 LOG = logging.getLogger(__name__)
 LOG.setLevel(logging.INFO)
 MIN_ITEMS_FOR_MODEL = 30
+EPSILON = 1e-6
 
 
 def get_training_data(db_loc: str = DB_LOC) -> pd.DataFrame:
@@ -105,7 +108,7 @@ def build_model(feed_id, in_df, n_iter=1_000, n_jobs=4):
             ("scale", StandardScaler()),
             ("sel_var", VarianceThreshold(threshold=1e-3)),
             ("sel_fcl", SelectPercentile(percentile=10)),
-            ("clf", LogisticRegression(n_jobs=2, solver="saga", penalty="elasticnet", tol=1e-3, max_iter=100_000)),
+            ("clf", LogisticRegression(n_jobs=1, solver="saga", penalty="elasticnet", tol=1e-3, max_iter=100_000)),
         ]
     )
 
@@ -136,31 +139,59 @@ def build_model(feed_id, in_df, n_iter=1_000, n_jobs=4):
     return search
 
 
-if __name__ == "__main__":
+def get_coef_ct(est, effectively_zero=EPSILON):
+    clf = est.named_steps["clf"]
+    nonzero = (np.abs(clf.coef_) > effectively_zero).sum() + (np.abs(clf.intercept_) > effectively_zero).sum()
+    total = 1 + clf.coef_.shape[1]
+    return {"total": total, "nonzero": nonzero, "ratio": nonzero / total}
+
+
+def build_all_models():
     start_time = dt.datetime.utcnow().timestamp()
+    git_hash = (
+        subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True).stdout.decode("utf-8").strip()
+    )
     feed_items = get_training_data()
     feed_info = feed_items.groupby("feed_id")["has_clicks"].agg(["mean", "count"])
 
-    too_small_ct = (feed_info["count"] < MIN_ITEMS_FOR_MODEL).sum()
-    LOG.info(f"Will not train models for {too_small_ct} feeds (not enough training data)")
-
     for feed_id, count in feed_info["count"].iteritems():
         if count < MIN_ITEMS_FOR_MODEL:
+            LOG.info(f"Skipping training for {feed_id} (not enough data)")
             continue
 
         in_df = feed_items.query("feed_id == @feed_id")
 
         start_ctr = time.perf_counter()
-        model = build_model(feed_id, in_df, n_iter=4)
+        n_iter = 1_000
+        model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=8)
         meta = {
+            "feed_id": feed_id,
             "train_start": start_time,
             "train_duration": time.perf_counter() - start_ctr,
-            "git_sha": "lol",  # TODO
+            "git_sha": git_hash,
             "n_rows": in_df.shape[0],
             "n_positives": in_df["has_clicks"].sum(),
-            "nonzero_coef_ct": 0,  # TODO
+            "coef_ct": get_coef_ct(model.best_estimator_),
+            "n_iter": n_iter,
             "best_params": model.best_params_,
             "best_score": model.best_score_,
         }
         with open(os.path.join(MODELS_LOC, f"{feed_id}.pkl"), "wb") as f:
             pickle.dump({"model": model, "meta": meta}, f)
+
+
+def describe_all_models():
+    for fn in os.listdir(MODELS_LOC):
+        LOG.info(fn)
+        with open(os.path.join(MODELS_LOC, fn), "rb") as f:
+            model = pickle.load(f)
+            for k, v in model["meta"].items():
+                LOG.info(f"* {k}: {v}")
+        LOG.info("")
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "train":
+        build_all_models()
+    else:
+        describe_all_models()
