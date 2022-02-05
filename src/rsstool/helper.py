@@ -113,7 +113,7 @@ async def render_filtered_feed(feed: db.Feed, _: BackgroundTasks) -> str:
             continue
 
         link = entry.get("link")
-        if link is None:
+        if link is None or entry.get("itunes_episodetype"):
             link = entry.get("links", [{"href": feed.config["source"]}])[0]
             link = link["href"]
 
