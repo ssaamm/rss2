@@ -30,10 +30,33 @@ docker build -t ssaamm/rss2 .
 docker run -ti \
   -v "$(pwd)":/external \
   -e DB_LOC='/external/rss.db' \
+  -e RSS_MODELS_LOC='/external/' \
   -e RSS_USERNAME='unsafe' \
   -e RSS_PASSWORD='unsafe' \
   -p 5001:5000 \
   ssaamm/rss2
+```
+
+## Running migrations (Docker)
+
+```sh
+docker run \
+  -e 'DB_LOC=/resources/rss.db' \
+  -v "$(pwd)"/rss2_resources:/resources \
+  -e 'RSS_MODELS_LOC=/resources/' \
+  -ti ssaamm/rss2 \
+  python -m rsstool.initdb migrate $SOME_MIGRATION_NAME
+```
+
+## Training models (Docker)
+
+```sh
+docker run \
+  -e 'DB_LOC=/resources/rss.db' \
+  -v "$(pwd)"/rss2_resources:/resources \
+  -e 'RSS_MODELS_LOC=/resources/' \
+  -ti ssaamm/rss2 \
+  python -m rsstool.ml train 1000 4
 ```
 
 ## Sample requests

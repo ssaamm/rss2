@@ -152,7 +152,8 @@ def get_git_hash():
     return git_hash
 
 
-def build_all_models():
+def build_all_models(n_iter, n_jobs):
+    LOG.info(f"Building models with {n_iter} iters, {n_jobs} jobs")
     start_time = dt.datetime.utcnow().timestamp()
     feed_items = get_training_data()
     git_hash = get_git_hash()
@@ -166,8 +167,7 @@ def build_all_models():
         in_df = feed_items.query("feed_id == @feed_id")
 
         start_ctr = time.perf_counter()
-        n_iter = 8
-        model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=8)
+        model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=n_jobs)
         meta = {
             "feed_id": feed_id,
             "train_start": start_time,
@@ -197,6 +197,9 @@ def describe_all_models():
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "train":
-        build_all_models()
+        n_iter, n_jobs = 10, 2
+        if len(sys.argv) > 3:
+            n_iter, n_jobs = int(sys.argv[2]), int(sys.argv[3])
+        build_all_models(n_iter, n_jobs)
     else:
         describe_all_models()
