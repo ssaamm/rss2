@@ -1,5 +1,8 @@
 FROM python:3.9
 
+ARG GIT_HASH=0
+ENV GIT_HASH=$GIT_HASH
+
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --upgrade -r /tmp/requirements.txt
 

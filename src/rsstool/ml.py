@@ -138,12 +138,24 @@ def store_meta(meta, db_loc: str = DB_LOC):
             )
 
 
+def get_git_hash():
+    git_hash = os.getenv("GIT_HASH", None)
+    if git_hash is None:
+        try:
+            git_hash = (
+                subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True)
+                .stdout.decode("utf-8")
+                .strip()
+            )
+        except subprocess.CalledProcessError:
+            pass
+    return git_hash
+
+
 def build_all_models():
     start_time = dt.datetime.utcnow().timestamp()
-    git_hash = (
-        subprocess.run(["git", "rev-parse", "HEAD"], check=True, capture_output=True).stdout.decode("utf-8").strip()
-    )
     feed_items = get_training_data()
+    git_hash = get_git_hash()
     feed_info = feed_items.groupby("feed_id")["has_clicks"].agg(["mean", "count"])
 
     for feed_id, count in feed_info["count"].iteritems():
