@@ -119,7 +119,7 @@ def get_coef_ct(est, effectively_zero=EPSILON):
     clf = est.named_steps["clf"]
     nonzero = (np.abs(clf.coef_) > effectively_zero).sum() + (np.abs(clf.intercept_) > effectively_zero).sum()
     total = 1 + clf.coef_.shape[1]
-    return {"total": total, "nonzero": nonzero, "ratio": nonzero / total}
+    return {"total": int(total), "nonzero": int(nonzero), "ratio": nonzero / total}
 
 
 def store_meta(meta, db_loc: str = DB_LOC):
@@ -179,7 +179,7 @@ def build_all_models(n_iter, n_jobs):
             "train_duration": time.perf_counter() - start_ctr,
             "git_sha": git_hash,
             "n_rows": in_df.shape[0],
-            "n_positives": in_df["has_clicks"].sum(),
+            "n_positives": int(in_df["has_clicks"].sum()),
             "coef_ct": get_coef_ct(model.best_estimator_),
             "n_iter": n_iter,
             "best_params": model.best_params_,
