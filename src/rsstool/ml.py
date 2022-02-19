@@ -167,7 +167,12 @@ def build_all_models(n_iter, n_jobs):
         in_df = feed_items.query("feed_id == @feed_id")
 
         start_ctr = time.perf_counter()
-        model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=n_jobs)
+        try:
+            model = build_model(feed_id, in_df, n_iter=n_iter, n_jobs=n_jobs)
+        except:
+            LOG.exception(f"Problem building model for {feed_id}")
+            continue
+
         meta = {
             "feed_id": feed_id,
             "train_start": start_time,
