@@ -10,7 +10,10 @@ from rsstool.constants import DB_LOC
 import rsstool.models as mdl
 
 
-async def maybe_get_cache(feed_id: str):
+async def maybe_get_cache(feed_id: str, skipcache: bool = False):
+    if skipcache:
+        return None
+
     async with asql.connect(DB_LOC) as db:
         params = {"id": feed_id, "min_dt": (dt.datetime.utcnow() - dt.timedelta(minutes=15)).timestamp()}
         async with db.execute(

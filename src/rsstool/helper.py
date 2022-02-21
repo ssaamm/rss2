@@ -177,9 +177,9 @@ async def render_digest_feed(feed: db.Feed, bg: BackgroundTasks) -> str:
     ).to_xml()
 
 
-async def render_feed(feed_id, bg: BackgroundTasks) -> str:
+async def render_feed(feed_id, bg: BackgroundTasks, skipcache: bool) -> str:
     tasks = [
-        asyncio.ensure_future(db.maybe_get_cache(feed_id)),
+        asyncio.ensure_future(db.maybe_get_cache(feed_id, skipcache)),
         asyncio.ensure_future(db.record_feed_access(feed_id)),
     ]
     # The order of result values corresponds to the order of awaitables
@@ -225,7 +225,7 @@ def maybe_load_model(feed: db.Feed):
         with open(os.path.join(MODELS_LOC, feed.feed_id + ".pkl"), "rb") as f:
             model_with_meta = pickle.load(f)
         return model_with_meta["model"]
-    except (FileNotFoundError, ModuleNotFoundError):
+    except (FileNotFoundError,):
         return None
 
 
