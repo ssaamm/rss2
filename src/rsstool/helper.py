@@ -225,7 +225,7 @@ def maybe_load_model(feed: db.Feed):
         with open(os.path.join(MODELS_LOC, feed.feed_id + ".pkl"), "rb") as f:
             model_with_meta = pickle.load(f)
         return model_with_meta["model"]
-    except FileNotFoundError:
+    except (FileNotFoundError, ModuleNotFoundError):
         return None
 
 
