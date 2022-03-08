@@ -59,7 +59,7 @@ def build_entries(entries):
             title=e["title"],
             link=e["link"],
             description=get_description(e),
-            author=e["author"],
+            author=e.get("author", e.get("dc:creator", None)),
             categories=[tag["term"] for tag in e.get("tags", [])],
             pubDate=datetime_from_struct_time(e["published_parsed"]),
             source=None,
