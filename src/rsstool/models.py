@@ -1,6 +1,6 @@
 from enum import Enum
 from typing import Union, List
-from pydantic import BaseModel
+from pydantic import BaseModel, PositiveInt
 
 
 class FeedNotFound(Exception):
@@ -39,6 +39,7 @@ class CreateDigestFeedRequest(BaseCreateFeedRequest):
     type = "digest"
     source: str
     cadence: CadenceEnum
+    length: PositiveInt = 1
     start_timestamp: float
 
 

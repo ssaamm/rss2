@@ -85,6 +85,18 @@ docker run \
 }
 ```
 
+### Digest feed
+
+```json
+{
+    "type": "digest",
+    "source": "https://rss.nytimes.com/services/xml/rss/nyt/MostEmailed.xml",
+    "cadence": "hourly",
+    "length": 12,
+    "start_timestamp": 1646751000
+}
+```
+
 ## Useful queries
 
 Most recently accessed feeds

@@ -191,10 +191,11 @@ async def get_windowed_items(feed: Feed, limit: int = 10):
 
     start = dt.datetime.utcfromtimestamp(feed.config["start_timestamp"])
     now = dt.datetime.utcnow()
+    length = feed.config.get("length", 1)
     window_size = {
-        "hourly": dt.timedelta(hours=1),  # TODO use the enum?
-        "daily": dt.timedelta(days=1),
-        "weekly": dt.timedelta(days=7),
+        "hourly": dt.timedelta(hours=1 * length),  # TODO use the enum?
+        "daily": dt.timedelta(days=1 * length),
+        "weekly": dt.timedelta(days=7 * length),
     }[feed.config["cadence"]]
     windows_completed = int((now - start) / window_size)
     # TODO what if < 1?

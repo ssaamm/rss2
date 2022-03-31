@@ -284,7 +284,12 @@ async def make_digest_feed(request: mdl.CreateDigestFeedRequest, bg: BackgroundT
     await db.insert_feed(
         feed_id,
         request.type,
-        {"source": request.source, "cadence": request.cadence, "start_timestamp": request.start_timestamp},
+        {
+            "source": request.source,
+            "cadence": request.cadence,
+            "length": request.length,
+            "start_timestamp": request.start_timestamp,
+        },
     )
     bg.add_task(index_source, feed_id)
     return mdl.FeedResponse(url=f"/api/v1/feed/{feed_id}")
